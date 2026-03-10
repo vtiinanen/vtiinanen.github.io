@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Työvuorot kalenteriin</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="https://unpkg.com/ical.js/dist/ical.es5.min.cjs"></script>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
 <style>
 /* ── Exact colors from the calendar app screenshots ── */
@@ -979,7 +980,36 @@ $('runBtn').addEventListener('click', async () => {
     log('Luodaan kalenteritiedosto…');
     const summary = $('summaryIn').value.trim() || 'Työvuoro';
     const icsStr = buildICS(shifts, summary);
-    const blob   = new Blob([icsStr],{type:'text/calendar'});
+
+    // Validate with ical.js
+    log('Tarkistetaan kalenteritiedoston rakenne…');
+    try {
+      const parsed   = ICAL.parse(icsStr);
+      const comp     = new ICAL.Component(parsed);
+      const vevents  = comp.getAllSubcomponents('vevent');
+      let validCount = 0, warnCount = 0;
+      for (const ev of vevents) {
+        const dtstart = ev.getFirstPropertyValue('dtstart');
+        const dtend   = ev.getFirstPropertyValue('dtend');
+        const evSum   = ev.getFirstPropertyValue('summary');
+        if (dtstart && dtend && evSum) {
+          validCount++;
+        } else {
+          warnCount++;
+          log(`  Puuttuva kenttä tapahtumassa: ${dtstart || '?'}`, 'warn');
+        }
+      }
+      if (warnCount === 0) {
+        log(`Tiedosto kunnossa — ${validCount} tapahtumaa tarkistettu ✓`, 'ok');
+      } else {
+        log(`${validCount} kunnossa, ${warnCount} puutteellista`, 'warn');
+      }
+    } catch (validErr) {
+      log(`Kalenteritiedostossa virhe: ${validErr.message}`, 'err');
+      throw new Error(`ICS-tiedoston rakenne on virheellinen: ${validErr.message}`);
+    }
+
+    const blob = new Blob([icsStr],{type:'text/calendar'});
     $('dlBtn').href     = URL.createObjectURL(blob);
     $('dlBtn').download = `tyovuorot_${year}_${fmt2(month)}.ics`;
 
