@@ -496,13 +496,13 @@ canvas { display: none; }
       Ota kuvakaappaus työvuorokalenteristasi ja lataa se alle.
       Sovellus lukee vuorot automaattisesti ja tekee tiedoston,
       jonka voit tuoda suoraan puhelimesi kalenteriin.
-      Kuvaa ei lähetetä minnekään — kaikki tapahtuu laitteellasi.
+      Kuvaa ei lähetetä minnekään, kaikki tapahtuu laitteellasi.
     </p>
   </header>
 
   <!-- 01 image -->
   <div class="panel">
-    <div class="panel-label">Vaihe 1 — Kuvakaappaus</div>
+    <div class="panel-label">Vaihe 1: Kuvakaappaus</div>
     <div class="dz" id="dz">
       <input type="file" id="fileIn" accept="image/*">
       <div class="dz-default">
@@ -523,7 +523,7 @@ canvas { display: none; }
 
   <!-- 02 params -->
   <div class="panel">
-    <div class="panel-label">Vaihe 2 — Valitse kuukausi</div>
+    <div class="panel-label">Vaihe 2: Valitse kuukausi</div>
     <div class="row2">
       <div class="field">
         <label for="yearIn">Vuosi</label>
@@ -555,7 +555,7 @@ canvas { display: none; }
 
   <!-- 03 process -->
   <div class="panel">
-    <div class="panel-label">Vaihe 3 — Lue vuorot</div>
+    <div class="panel-label">Vaihe 3: Lue vuorot</div>
     <button class="btn-run" id="runBtn" disabled>
       <span id="runLabel">Lue työvuorot kuvasta</span>
     </button>
@@ -598,7 +598,7 @@ canvas { display: none; }
 
     <p style="margin-top:22px;font-size:13px;color:var(--muted);line-height:1.7;">
       💡 <strong style="color:var(--text)">Miten tuon tiedoston kalenteriin?</strong><br>
-      Avaa ladattu tiedosto puhelimellasi — kalenteri (Google, Apple, Outlook) kysyy automaattisesti, haluatko lisätä vuorot. Napauta Hyväksy.
+      Avaa ladattu tiedosto puhelimellasi. Kalenteri (Google, Apple, Outlook) kysyy automaattisesti, haluatko lisätä vuorot. Napauta Hyväksy.
     </p>
   </div>
 
@@ -703,18 +703,41 @@ const daysInMonth = (y,m) => new Date(y,m,0).getDate();
 
 // ── ICS ───────────────────────────────────────────────────────────────────────
 function buildICS(shifts, summary) {
-  const lines=['BEGIN:VCALENDAR','VERSION:2.0',
-    'PRODID:-//calendar_ocr browser//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
-  for(const s of shifts){
-    const dt=`${s.year}${fmt2(s.month)}${fmt2(s.day)}`;
-    lines.push('BEGIN:VEVENT',
-      `UID:${dt}T${fmt2(s.sh)}${fmt2(s.sm)}00@calendar_ocr`,
+  // RFC 5545 compliant ICS. Uses floating local time (no Z suffix, no TZID)
+  // which is the most universally compatible format for shift schedules -
+  // the times are interpreted in whatever timezone the device is set to.
+  const now = new Date();
+  const stamp = now.getUTCFullYear()
+    + fmt2(now.getUTCMonth()+1)
+    + fmt2(now.getUTCDate())
+    + 'T'
+    + fmt2(now.getUTCHours())
+    + fmt2(now.getUTCMinutes())
+    + fmt2(now.getUTCSeconds())
+    + 'Z';
+
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Työvuorot kalenteriin//FI',
+    'CALSCALE:GREGORIAN',
+  ];
+
+  for (const s of shifts) {
+    const dt = `${s.year}${fmt2(s.month)}${fmt2(s.day)}`;
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${dt}T${fmt2(s.sh)}${fmt2(s.sm)}00-${s.day}${s.month}${s.year}@tyovuorot`,
+      `DTSTAMP:${stamp}`,
       `DTSTART:${dt}T${fmt2(s.sh)}${fmt2(s.sm)}00`,
       `DTEND:${dt}T${fmt2(s.eh)}${fmt2(s.em)}00`,
-      `SUMMARY:${summary}`,'END:VEVENT');
+      `SUMMARY:${summary}`,
+      'END:VEVENT'
+    );
   }
+
   lines.push('END:VCALENDAR');
-  return lines.join('\r\n');
+  return lines.join('\r\n') + '\r\n';
 }
 
 // ── file input ────────────────────────────────────────────────────────────────
@@ -892,11 +915,13 @@ $('runBtn').addEventListener('click', async () => {
     setProgress(35, 'Suodatetaan vuoroja…');
     const MIN_AREA = W*H*0.0012;
     const MAX_W    = (W/7)*2.8;
+    const MIN_H    = 65;   // day-number header strips are ~47px tall; real shift cells are ~89px
     const HDR_H    = H*0.13;
 
     const cells = allBoxes.filter(b => {
       if(b.w*b.h < MIN_AREA) return false;
       if(b.w > MAX_W) return false;
+      if(b.h < MIN_H) return false;
       if(b.y1 < HDR_H*0.5) return false;
       const cx=((b.x1+b.x2)/2)|0, cy=((b.y1+b.y2)/2)|0;
       const i=(cy*W+cx)*4;
@@ -959,13 +984,13 @@ $('runBtn').addEventListener('click', async () => {
       const times   = parseTimePair(rawText);
 
       if(!times){
-        log(`  ${fmt2(dayNum)}.${fmt2(month)}. — kellonaikaa ei löydetty`,'warn');
+        log(`  ${fmt2(dayNum)}.${fmt2(month)}: kellonaikaa ei löydetty`,'warn');
         continue;
       }
 
       // Skip free days (00:00 → 00:00)
       if(times.sh===0 && times.sm===0 && times.eh===0 && times.em===0){
-        log(`  ${fmt2(dayNum)}.${fmt2(month)}. — vapaapäivä, ohitetaan`,"dim");
+        log(`  ${fmt2(dayNum)}.${fmt2(month)}: vapaapäivä, ohitetaan`,"dim");
         continue;
       }
 
@@ -1000,7 +1025,7 @@ $('runBtn').addEventListener('click', async () => {
         }
       }
       if (warnCount === 0) {
-        log(`Tiedosto kunnossa — ${validCount} tapahtumaa tarkistettu ✓`, 'ok');
+        log(`Tiedosto kunnossa: ${validCount} tapahtumaa tarkistettu ✓`, 'ok');
       } else {
         log(`${validCount} kunnossa, ${warnCount} puutteellista`, 'warn');
       }
@@ -1009,12 +1034,12 @@ $('runBtn').addEventListener('click', async () => {
       throw new Error(`ICS-tiedoston rakenne on virheellinen: ${validErr.message}`);
     }
 
-    const blob = new Blob([icsStr],{type:'text/calendar'});
+    const blob = new Blob([icsStr],{type:'text/calendar;charset=utf-8'});
     $('dlBtn').href     = URL.createObjectURL(blob);
     $('dlBtn').download = `tyovuorot_${year}_${fmt2(month)}.ics`;
 
     setProgress(100,'Valmis!');
-    log(`Valmis — löydettiin ${shifts.length} työvuoroa`, 'ok');
+    log(`Valmis, löydettiin ${shifts.length} työvuoroa`, 'ok');
 
     // render result
     $('resCount').textContent = shifts.length;
