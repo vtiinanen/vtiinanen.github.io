@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Työvuorot kalenteriin</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+/* ── Exact colors from the calendar app screenshots ── */
+:root {
+  /* app background */
+  --app-bg:       #1e292f;
+  /* regular shift cell (blue-grey) */
+  --cell-blue:    #5b778c;
+  --cell-blue-dk: #3d5568;
+  /* teal accent / today highlight */
+  --cell-teal:    #78c5bd;
+  --cell-teal-dk: #4a9b93;
+  /* cancelled / pink */
+  --cell-pink:    #d78d8c;
+  /* purple notification */
+  --cell-purple:  #dcb8fe;
+  /* text on cells */
+  --cell-text:    #edf9ff;
+  --cell-text-dim:#a8c8d8;
+  /* UI chrome */
+  --surface:      #16222a;
+  --surface2:     #1a2830;
+  --border:       #253540;
+  --border2:      #2e404d;
+  --text:         #b8d4e0;
+  --muted:        #4a6878;
+  --mono:         'Share Tech Mono', monospace;
+  --sans:         'DM Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--app-bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-weight: 300;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* subtle grid matching the calendar grid feel */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(37,53,64,.6) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37,53,64,.6) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none; z-index: 0;
+}
+
+.wrap {
+  position: relative; z-index: 1;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 52px 28px 100px;
+}
+
+/* ── header ──────────────────────────────────────────────────────────────── */
+header { margin-bottom: 48px; }
+
+.logo-row {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 10px;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--cell-teal); margin-bottom: 14px;
+}
+
+.dot {
+  width: 8px; height: 8px;
+  background: var(--cell-teal);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--cell-teal);
+  animation: breathe 3s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,100% { opacity:1; transform:scale(1); }
+  50%      { opacity:.3; transform:scale(.65); }
+}
+
+h1 {
+  font-family: var(--mono);
+  font-size: clamp(28px, 5.5vw, 48px);
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -.025em;
+}
+
+h1 em { color: var(--cell-teal); font-style: normal; }
+
+.tagline {
+  margin-top: 12px;
+  font-family: var(--sans);
+  font-size: 14.5px;
+  color: var(--text);
+  line-height: 1.7;
+  max-width: 560px;
+}
+
+.chip {
+  display: inline-block;
+  background: var(--cell-blue-dk);
+  color: var(--cell-text-dim);
+  border-radius: 2px;
+  padding: 1px 8px; font-size: 10px;
+  letter-spacing: .1em;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ── panels ──────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 28px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.panel-label {
+  position: absolute; top: 0; left: 18px;
+  transform: translateY(-50%);
+  background: var(--surface);
+  padding: 0 8px;
+  font-family: var(--sans); font-size: 12px; font-weight: 500;
+  color: var(--cell-teal);
+}
+
+/* ── drop zone ───────────────────────────────────────────────────────────── */
+.dz {
+  border: 1px dashed var(--cell-blue-dk);
+  border-radius: 3px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  position: relative; overflow: hidden;
+  transition: border-color .2s, background .2s;
+}
+
+.dz:hover, .dz.over {
+  border-color: var(--cell-teal);
+  background: rgba(120,197,189,.06);
+}
+
+.dz.loaded {
+  border-style: solid;
+  border-color: var(--cell-teal);
+  padding: 22px;
+}
+
+.dz input {
+  position: absolute; inset: 0;
+  opacity: 0; cursor: pointer;
+  width: 100%; height: 100%;
+}
+
+.dz.loaded .dz-default { display: none; }
+
+.dz-icon {
+  font-family: var(--mono); font-size: 32px;
+  color: var(--cell-blue); display: block;
+  margin-bottom: 12px;
+  transition: color .2s, transform .25s;
+}
+
+.dz:hover .dz-icon {
+  color: var(--cell-teal);
+  transform: translateY(-4px);
+}
+
+.dz-text {
+  font-family: var(--sans); font-size: 16px; font-weight: 400;
+  color: var(--text);
+}
+
+.dz-sub {
+  font-family: var(--sans); font-size: 13px;
+  color: var(--muted); margin-top: 6px;
+}
+
+/* preview */
+.dz-preview {
+  display: none; align-items: center;
+  gap: 18px; text-align: left;
+}
+
+.dz.loaded .dz-preview { display: flex; }
+
+.thumb {
+  width: 56px; height: 76px;
+  object-fit: cover;
+  border: 1px solid var(--border2);
+  border-radius: 3px; flex-shrink: 0;
+}
+
+.prev-name {
+  font-family: var(--mono); font-size: 13px;
+  color: var(--cell-teal); word-break: break-all;
+}
+
+.prev-meta {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--muted); margin-top: 5px;
+}
+
+/* ── params ──────────────────────────────────────────────────────────────── */
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.field { display: flex; flex-direction: column; gap: 7px; }
+
+.field label {
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  letter-spacing: .02em;
+  color: var(--cell-teal);
+}
+
+.field input, .field select {
+  background: var(--app-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--mono); font-size: 16px;
+  padding: 11px 14px; outline: none; width: 100%;
+  transition: border-color .2s, box-shadow .2s;
+  -moz-appearance: textfield; appearance: textfield;
+}
+
+.field input::-webkit-inner-spin-button { display: none; }
+
+.field input:focus, .field select:focus {
+  border-color: var(--cell-teal);
+  box-shadow: 0 0 0 2px rgba(120,197,189,.18);
+}
+
+.field select option { background: var(--app-bg); }
+
+/* ── run button ──────────────────────────────────────────────────────────── */
+.btn-run {
+  width: 100%; padding: 17px;
+  background: transparent;
+  border: 1px solid var(--cell-teal);
+  color: var(--cell-teal);
+  font-family: var(--sans); font-size: 16px; font-weight: 500;
+  cursor: pointer; border-radius: 3px;
+  position: relative; overflow: hidden;
+  transition: color .22s;
+}
+
+.btn-run::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--cell-teal);
+  transform: translateX(-101%);
+  transition: transform .28s ease;
+}
+
+.btn-run:hover:not(:disabled)::before { transform: translateX(0); }
+.btn-run:hover:not(:disabled) {
+  color: var(--app-bg);
+  box-shadow: 0 0 20px rgba(120,197,189,.25);
+}
+
+.btn-run span { position: relative; z-index: 1; }
+
+.btn-run:disabled {
+  border-color: var(--muted);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* ── progress ────────────────────────────────────────────────────────────── */
+.progress { display: none; margin-top: 18px; }
+.progress.show { display: block; }
+
+.prog-hd {
+  display: flex; justify-content: space-between;
+  font-family: var(--sans); font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+
+.prog-bar {
+  height: 2px; background: var(--border);
+  border-radius: 2px; overflow: hidden;
+}
+
+.prog-fill {
+  height: 100%; background: var(--cell-teal);
+  box-shadow: 0 0 8px var(--cell-teal);
+  border-radius: 2px;
+  transition: width .38s cubic-bezier(.4,0,.2,1);
+  width: 0%;
+}
+
+/* ── terminal ────────────────────────────────────────────────────────────── */
+.term {
+  display: none;
+  background: #0d181e;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 16px 18px;
+  font-family: var(--mono); font-size: 11.5px;
+  line-height: 1.9;
+  max-height: 240px; overflow-y: auto;
+  margin-top: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+
+.term.show { display: block; }
+.term::-webkit-scrollbar { width: 4px; }
+.term::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.tl { display: flex; gap: 10px; }
+.ts { color: var(--muted); flex-shrink: 0; user-select: none; }
+.tm { color: var(--text); }
+.tm.ok   { color: var(--cell-teal); }
+.tm.warn { color: var(--cell-pink); }
+.tm.err  { color: #ff6b6b; }
+.tm.dim  { color: var(--muted); }
+
+/* ── result panel ────────────────────────────────────────────────────────── */
+.result {
+  display: none;
+  border: 1px solid var(--cell-teal);
+  background: rgba(120,197,189,.035);
+  border-radius: 4px;
+  padding: 28px;
+  margin-top: 12px;
+  animation: riseIn .42s cubic-bezier(.4,0,.2,1);
+}
+
+.result.show { display: block; }
+
+@keyframes riseIn {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.result-top {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 20px;
+  flex-wrap: wrap; margin-bottom: 26px;
+}
+
+.res-label {
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  color: var(--cell-teal); margin-bottom: 5px;
+}
+
+.res-count {
+  font-family: var(--mono); font-size: 52px;
+  color: #fff; line-height: 1;
+}
+
+.res-sub {
+  font-family: var(--sans); font-size: 14px;
+  color: var(--muted); margin-top: 5px;
+}
+
+.btn-dl {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 32px;
+  background: var(--cell-teal);
+  color: var(--app-bg);
+  font-family: var(--sans); font-size: 15px;
+  font-weight: 600;
+  border: none; border-radius: 3px;
+  cursor: pointer; text-decoration: none;
+  white-space: nowrap; flex-shrink: 0;
+  transition: box-shadow .2s, transform .15s;
+}
+
+.btn-dl:hover {
+  box-shadow: 0 0 28px rgba(120,197,189,.35);
+  transform: translateY(-2px);
+}
+.btn-dl:active { transform: translateY(0); }
+
+/* ── shift list rendered like the calendar app ───────────────────────────── */
+.shift-grid {
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.sg-head {
+  display: grid;
+  grid-template-columns: 90px 1fr 72px 68px;
+  gap: 8px;
+  font-family: var(--sans); font-size: 12px; font-weight: 500;
+  color: var(--muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.sg-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 72px 68px;
+  gap: 8px; align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(37,53,64,.8);
+  animation: rowIn .32s ease both;
+}
+
+@keyframes rowIn {
+  from { opacity:0; transform:translateX(-8px); }
+  to   { opacity:1; transform:translateX(0); }
+}
+
+/* mimic the calendar's cell look */
+.sg-cell-pill {
+  display: inline-flex;
+  background: var(--cell-blue);
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--cell-text);
+  line-height: 1.3;
+  flex-direction: column;
+  min-width: 68px;
+}
+
+.sg-cell-pill .pill-date {
+  font-size: 10px; color: var(--cell-text-dim);
+  letter-spacing: .05em;
+}
+
+.sg-times {
+  font-family: var(--sans); font-size: 14px; font-weight: 500;
+  color: var(--cell-teal);
+}
+
+.sg-dur {
+  font-family: var(--sans); font-size: 13px;
+  color: var(--muted); text-align: right;
+}
+
+.sg-bar {
+  display: flex; align-items: center;
+}
+
+.sg-bar-bg {
+  flex: 1; height: 3px;
+  background: var(--border2); border-radius: 2px;
+  position: relative;
+}
+
+.sg-bar-fill {
+  position: absolute; left:0; top:0; bottom:0;
+  background: var(--cell-blue);
+  border-radius: 2px;
+}
+
+/* ── footer ──────────────────────────────────────────────────────────────── */
+footer {
+  margin-top: 52px;
+  font-family: var(--sans); font-size: 13px;
+  color: var(--muted); text-align: center;
+  line-height: 2;
+}
+
+canvas { display: none; }
+
+@media (max-width: 540px) {
+  .row2 { grid-template-columns: 1fr; }
+  .wrap { padding: 28px 14px 64px; }
+  .sg-head, .sg-row { grid-template-columns: 80px 1fr 58px; }
+  .sg-bar { display: none; }
+  .result-top { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo-row">
+      <div class="dot"></div>
+      Työvuorot kalenteriin
+    </div>
+    <h1>Vie vuorot<em> kalenteriin</em></h1>
+    <p class="tagline">
+      Ota kuvakaappaus työvuorokalenteristasi ja lataa se alle.
+      Sovellus lukee vuorot automaattisesti ja tekee tiedoston,
+      jonka voit tuoda suoraan puhelimesi kalenteriin.
+      Kuvaa ei lähetetä minnekään — kaikki tapahtuu laitteellasi.
+    </p>
+  </header>
+
+  <!-- 01 image -->
+  <div class="panel">
+    <div class="panel-label">Vaihe 1 — Kuvakaappaus</div>
+    <div class="dz" id="dz">
+      <input type="file" id="fileIn" accept="image/*">
+      <div class="dz-default">
+        <span class="dz-icon">📅</span>
+        <div class="dz-text">Raahaa kuvakaappaus tähän tai napauta valitaksesi kuva</div>
+        <div class="dz-sub">Toimii PNG-, JPG- ja WEBP-kuvien kanssa</div>
+      </div>
+      <div class="dz-preview">
+        <img class="thumb" id="thumb" src="" alt="">
+        <div>
+          <div class="prev-name" id="prevName"></div>
+          <div class="prev-meta" id="prevMeta"></div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:5px">Napauta vaihtaaksesi kuvaa</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 02 params -->
+  <div class="panel">
+    <div class="panel-label">Vaihe 2 — Valitse kuukausi</div>
+    <div class="row2">
+      <div class="field">
+        <label for="yearIn">Vuosi</label>
+        <input type="number" id="yearIn" value="2026" min="2000" max="2099">
+      </div>
+      <div class="field">
+        <label for="monthSel">Kuukausi</label>
+        <select id="monthSel">
+          <option value="1">Tammikuu</option>
+          <option value="2">Helmikuu</option>
+          <option value="3">Maaliskuu</option>
+          <option value="4">Huhtikuu</option>
+          <option value="5">Toukokuu</option>
+          <option value="6">Kesäkuu</option>
+          <option value="7">Heinäkuu</option>
+          <option value="8">Elokuu</option>
+          <option value="9">Syyskuu</option>
+          <option value="10">Lokakuu</option>
+          <option value="11">Marraskuu</option>
+          <option value="12">Joulukuu</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" style="margin-top:14px;">
+      <label for="summaryIn">Tapahtuman nimi kalenterissa</label>
+      <input type="text" id="summaryIn" placeholder="Työvuoro" maxlength="80">
+    </div>
+  </div>
+
+  <!-- 03 process -->
+  <div class="panel">
+    <div class="panel-label">Vaihe 3 — Lue vuorot</div>
+    <button class="btn-run" id="runBtn" disabled>
+      <span id="runLabel">Lue työvuorot kuvasta</span>
+    </button>
+
+    <div class="progress" id="prog">
+      <div class="prog-hd">
+        <span id="progLabel">Aloitetaan…</span>
+        <span id="progPct">0%</span>
+      </div>
+      <div class="prog-bar">
+        <div class="prog-fill" id="progFill"></div>
+      </div>
+    </div>
+
+    <div class="term" id="term"></div>
+  </div>
+
+  <!-- result -->
+  <div class="result" id="result">
+    <div class="result-top">
+      <div>
+        <div class="res-label">✓ &nbsp;Valmis!</div>
+        <div class="res-count" id="resCount">0</div>
+        <div class="res-sub" id="resSub"></div>
+      </div>
+      <a class="btn-dl" id="dlBtn" href="#" download="tyovuorot.ics">
+        ↓ &nbsp;Lataa kalenteritiedosto
+      </a>
+    </div>
+
+    <div class="shift-grid">
+      <div class="sg-head">
+        <span>Päivä</span>
+        <span>Työvuoro</span>
+        <span>Kesto</span>
+        <span></span>
+      </div>
+      <div id="shiftRows"></div>
+    </div>
+
+    <p style="margin-top:22px;font-size:13px;color:var(--muted);line-height:1.7;">
+      💡 <strong style="color:var(--text)">Miten tuon tiedoston kalenteriin?</strong><br>
+      Avaa ladattu tiedosto puhelimellasi — kalenteri (Google, Apple, Outlook) kysyy automaattisesti, haluatko lisätä vuorot. Napauta Hyväksy.
+    </p>
+  </div>
+
+  <canvas id="cv"></canvas>
+
+  <footer>
+    Kaikki tietojen käsittely tapahtuu laitteellasi. Mitään ei lähetetä ulkopuolisille palvelimille.
+  </footer>
+</div>
+
+<script>
+'use strict';
+
+// ── constants ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt2 = n => String(n).padStart(2,'0');
+const MONTHS = ['Tammikuu','Helmikuu','Maaliskuu','Huhtikuu','Toukokuu','Kesäkuu',
+                'Heinäkuu','Elokuu','Syyskuu','Lokakuu','Marraskuu','Joulukuu'];
+
+// Exact colors sampled from the app screenshots
+// Shift cells: blue-grey #5b778c  →  rgb(91,119,140)
+// Teal today:  #78c5bd           →  rgb(120,197,189)
+// Pink cancel: #d78d8c           →  rgb(215,141,140)
+
+function isShiftCell(r, g, b) {
+  // Blue-grey shift cells
+  const blueGrey = r >= 70 && r <= 115
+    && g >= 100 && g <= 145
+    && b >= 115 && b <= 165
+    && b > r && b > g && g > r;
+
+  // Teal today-highlighted cells
+  const teal = r >= 95 && r <= 145
+    && g >= 170 && g <= 220
+    && b >= 160 && b <= 215
+    && g > r && g > b;
+
+  return blueGrey || teal;
+}
+
+function isPink(r, g, b) {
+  return r >= 180 && r <= 255
+    && g >= 110 && g <= 175
+    && b >= 110 && b <= 175
+    && r > g + 30 && r > b + 30;
+}
+
+// ── morphological dilation ────────────────────────────────────────────────────
+function dilate(mask, W, H, r) {
+  const out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!mask[y*W+x]) continue;
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const ny = y+dy, nx = x+dx;
+          if (ny>=0 && ny<H && nx>=0 && nx<W) out[ny*W+nx] = 1;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// ── connected components (BFS) ────────────────────────────────────────────────
+function connComp(mask, W, H) {
+  const labeled = new Int32Array(W*H).fill(-1);
+  const boxes = [];
+  for (let start = 0; start < W*H; start++) {
+    if (!mask[start] || labeled[start] !== -1) continue;
+    const queue = [start]; let head = 0;
+    let x1=W, y1=H, x2=0, y2=0;
+    while (head < queue.length) {
+      const idx = queue[head++];
+      if (labeled[idx] !== -1) continue;
+      labeled[idx] = boxes.length;
+      const cx = idx%W, cy = (idx/W)|0;
+      if (cx<x1)x1=cx; if (cx>x2)x2=cx;
+      if (cy<y1)y1=cy; if (cy>y2)y2=cy;
+      if (cx>0   && mask[idx-1] && labeled[idx-1]===-1) queue.push(idx-1);
+      if (cx<W-1 && mask[idx+1] && labeled[idx+1]===-1) queue.push(idx+1);
+      if (cy>0   && mask[idx-W] && labeled[idx-W]===-1) queue.push(idx-W);
+      if (cy<H-1 && mask[idx+W] && labeled[idx+W]===-1) queue.push(idx+W);
+    }
+    boxes.push({x1,y1,x2,y2,w:x2-x1+1,h:y2-y1+1});
+  }
+  return boxes;
+}
+
+// ── Sakamoto weekday (0=Mon..6=Sun) ──────────────────────────────────────────
+function weekdayOf(year, month, day) {
+  const t=[0,3,2,5,0,3,5,1,4,6,2,4];
+  let y=year; if(month<3)y--;
+  const dow=(y+Math.floor(y/4)-Math.floor(y/100)+Math.floor(y/400)+t[month-1]+day)%7;
+  return (dow+6)%7;
+}
+const daysInMonth = (y,m) => new Date(y,m,0).getDate();
+
+// ── ICS ───────────────────────────────────────────────────────────────────────
+function buildICS(shifts, summary) {
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0',
+    'PRODID:-//calendar_ocr browser//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
+  for(const s of shifts){
+    const dt=`${s.year}${fmt2(s.month)}${fmt2(s.day)}`;
+    lines.push('BEGIN:VEVENT',
+      `UID:${dt}T${fmt2(s.sh)}${fmt2(s.sm)}00@calendar_ocr`,
+      `DTSTART:${dt}T${fmt2(s.sh)}${fmt2(s.sm)}00`,
+      `DTEND:${dt}T${fmt2(s.eh)}${fmt2(s.em)}00`,
+      `SUMMARY:${summary}`,'END:VEVENT');
+  }
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+
+// ── file input ────────────────────────────────────────────────────────────────
+let selectedFile = null;
+
+function handleFile(f) {
+  if (!f || !f.type.startsWith('image/')) return;
+  selectedFile = f;
+  $('dz').classList.add('loaded');
+  $('prevName').textContent = f.name;
+  $('prevMeta').textContent = formatBytes(f.size);
+  const r = new FileReader();
+  r.onload = e => { $('thumb').src = e.target.result; };
+  r.readAsDataURL(f);
+  $('runBtn').disabled = false;
+}
+
+function formatBytes(b) {
+  if(b<1024)return b+' B';
+  if(b<1048576)return(b/1024).toFixed(1)+' KB';
+  return(b/1048576).toFixed(1)+' MB';
+}
+
+$('fileIn').addEventListener('change', e => handleFile(e.target.files[0]));
+const dz = $('dz');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ── terminal / progress ───────────────────────────────────────────────────────
+function initTerm() {
+  $('term').classList.add('show');
+  $('term').innerHTML = '';
+}
+function log(msg, type='') {
+  const t=$('term');
+  const now=new Date();
+  const ts=`${fmt2(now.getHours())}:${fmt2(now.getMinutes())}:${fmt2(now.getSeconds())}`;
+  const el=document.createElement('div');
+  el.className='tl';
+  el.innerHTML=`<span class="ts">${ts}</span><span class="tm ${type}">${msg}</span>`;
+  t.appendChild(el);
+  t.scrollTop=t.scrollHeight;
+}
+function setProgress(pct, label) {
+  $('prog').classList.add('show');
+  $('progFill').style.width=pct+'%';
+  $('progLabel').textContent=label;
+  $('progPct').textContent=Math.round(pct)+'%';
+}
+
+// ── OCR a cell crop ───────────────────────────────────────────────────────────
+async function ocrCell(worker, srcCanvas, cell) {
+  const scale = 4;
+  const oc = document.createElement('canvas');
+  oc.width  = cell.w * scale;
+  oc.height = cell.h * scale;
+  const octx = oc.getContext('2d');
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(srcCanvas, cell.x1, cell.y1, cell.w, cell.h,
+                             0, 0, oc.width, oc.height);
+
+  // Convert to high-contrast B&W for Tesseract.
+  // Cell background is blue-grey ~rgb(91,119,140) → grayscale ~112.
+  // Text is lighter pixels spiking to 150-251.
+  // Strategy: measure the median brightness of the cell, then
+  // treat anything >= median+28 as text (black), rest as background (white).
+  const id = octx.getImageData(0, 0, oc.width, oc.height);
+  const d  = id.data;
+
+  // Compute per-pixel grayscale and collect for median
+  const grays = new Float32Array(oc.width * oc.height);
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    grays[p] = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+  }
+
+  // Median via sort
+  const sorted = grays.slice().sort();
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const thresh = median + 28;  // text is meaningfully brighter than cell bg
+
+  // Write B&W: text → black (0), background → white (255)
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const v = grays[p] >= thresh ? 0 : 255;
+    d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+  }
+  octx.putImageData(id, 0, 0);
+
+  const { data: { text } } = await worker.recognize(oc);
+  return text;
+}
+
+function parseTimePair(text) {
+  const times=[];
+  const re=/\b(\d{1,2})[:\.](\d{2})\b/g;
+  let m;
+  while((m=re.exec(text))!==null){
+    const h=parseInt(m[1]),min=parseInt(m[2]);
+    if(h<=23&&min<=59)times.push({h,m:min});
+    if(times.length===2)break;
+  }
+  if(times.length<2)return null;
+  return{sh:times[0].h,sm:times[0].m,eh:times[1].h,em:times[1].m};
+}
+
+function durStr(sh,sm,eh,em){
+  const m=(eh*60+em)-(sh*60+sm);
+  const h=Math.floor(m/60),r=m%60;
+  return r?`${h}h ${r}m`:`${h}h`;
+}
+
+// ── main pipeline ─────────────────────────────────────────────────────────────
+$('runBtn').addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const year  = parseInt($('yearIn').value);
+  const month = parseInt($('monthSel').value);
+  if (!year||year<2000||year>2099) { log('Virheellinen vuosiluku','err'); return; }
+
+  $('runBtn').disabled = true;
+  $('runLabel').textContent = 'Luetaan vuoroja…';
+  $('result').classList.remove('show');
+  $('prog').classList.remove('show');
+  $('progFill').style.width = '0%';
+  initTerm();
+
+  try {
+    log(`Kuukausi: ${MONTHS[month-1]} ${year}`);
+    log(`Tiedosto: ${selectedFile.name} (${formatBytes(selectedFile.size)})`);
+
+    // load image
+    setProgress(5, 'Ladataan kuvaa…');
+    const img = await new Promise((res,rej) => {
+      const i=new Image();
+      i.onload=()=>res(i); i.onerror=rej;
+      i.src=URL.createObjectURL(selectedFile);
+    });
+
+    const cv   = $('cv');
+    cv.width   = img.naturalWidth;
+    cv.height  = img.naturalHeight;
+    const ctx  = cv.getContext('2d');
+    ctx.drawImage(img,0,0);
+    const W=cv.width, H=cv.height;
+    const px = ctx.getImageData(0,0,W,H).data;
+    log(`Kuvan koko: ${W}×${H} pikseliä`, 'dim');
+
+    // color segmentation
+    setProgress(12, 'Etsitään työvuoroja…');
+    log('Tunnistetaan työvuorojen värejä…');
+    const mask = new Uint8Array(W*H);
+    let hits=0;
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const i=(y*W+x)*4;
+        if(isShiftCell(px[i],px[i+1],px[i+2])){mask[y*W+x]=1;hits++;}
+      }
+    }
+    log(`Vastaavia pikseleitä: ${hits.toLocaleString()}`, 'dim');
+
+    // dilation
+    setProgress(20, 'Yhdistetään alueita…');
+    log('Yhdistetään vuorojen alueita…');
+    const dilated = dilate(mask,W,H,4);
+
+    // connected components
+    setProgress(28, 'Rajataan vuoroja…');
+    log('Rajataan yksittäiset vuorot…');
+    const allBoxes = connComp(dilated,W,H);
+    log(`Löydettiin ${allBoxes.length} aluetta`, 'dim');
+
+    // filter
+    setProgress(35, 'Suodatetaan vuoroja…');
+    const MIN_AREA = W*H*0.0012;
+    const MAX_W    = (W/7)*2.8;
+    const HDR_H    = H*0.13;
+
+    const cells = allBoxes.filter(b => {
+      if(b.w*b.h < MIN_AREA) return false;
+      if(b.w > MAX_W) return false;
+      if(b.y1 < HDR_H*0.5) return false;
+      const cx=((b.x1+b.x2)/2)|0, cy=((b.y1+b.y2)/2)|0;
+      const i=(cy*W+cx)*4;
+      if(isPink(px[i],px[i+1],px[i+2])){
+        log(`  Ohitettu peruttu vuoro`, 'warn'); return false;
+      }
+      return true;
+    });
+
+    log(`Tunnistettiin ${cells.length} vuoroa`, cells.length>0?'ok':'warn');
+    if(cells.length===0) throw new Error('Vuoroja ei löydetty. Tarkista, että kuvakaappaus on oikea kalenterinäkymä.');
+
+    // sort top-left → bottom-right
+    const ROW_H=(H-HDR_H)/6, COL_W=W/7;
+    cells.sort((a,b)=>{
+      const ra=Math.round((a.y1-HDR_H)/ROW_H), rb=Math.round((b.y1-HDR_H)/ROW_H);
+      return ra!==rb?ra-rb:a.x1-b.x1;
+    });
+
+    // init Tesseract
+    setProgress(40, 'Valmistellaan tekstintunnistus…');
+    log('Ladataan tekstintunnistus…');
+
+    const worker = await Tesseract.createWorker('eng', 1, {
+      logger: m => {
+        if(m.status==='recognizing text'){
+          setProgress(45+m.progress*43, `Luetaan kellonaikoja…`);
+        }
+      }
+    });
+    await worker.setParameters({
+      tessedit_char_whitelist: '0123456789:.',
+      tessedit_pageseg_mode:   '6',
+    });
+    log('Tekstintunnistus valmis', 'ok');
+
+    // OCR
+    setProgress(45, 'Luetaan kellonaikoja…');
+    log(`Luetaan kellonaikoja ${cells.length} vuorosta…`);
+
+    const firstWD = weekdayOf(year,month,1);
+    const maxDay  = daysInMonth(year,month);
+    const shifts  = [];
+
+    for(let ci=0; ci<cells.length; ci++){
+      const cell=cells[ci];
+      setProgress(45+(ci/cells.length)*43, `Vuoro ${ci+1}/${cells.length}…`);
+
+      const cx  = ((cell.x1+cell.x2)/2)|0;
+      const cy  = ((cell.y1+cell.y2)/2)|0;  // use CENTER y for stable row mapping
+      const gridCol = Math.min(Math.floor(cx/COL_W),6);
+      const gridRow = Math.max(0,Math.floor((cy-HDR_H)/ROW_H));
+      const dayNum  = gridRow*7+gridCol-firstWD+1;
+
+      if(dayNum<1||dayNum>maxDay){
+        continue;
+      }
+
+      const rawText = await ocrCell(worker,cv,cell);
+      const times   = parseTimePair(rawText);
+
+      if(!times){
+        log(`  ${fmt2(dayNum)}.${fmt2(month)}. — kellonaikaa ei löydetty`,'warn');
+        continue;
+      }
+
+      // Skip free days (00:00 → 00:00)
+      if(times.sh===0 && times.sm===0 && times.eh===0 && times.em===0){
+        log(`  ${fmt2(dayNum)}.${fmt2(month)}. — vapaapäivä, ohitetaan`,"dim");
+        continue;
+      }
+
+      log(`  ${fmt2(dayNum)}.${fmt2(month)}.  ${fmt2(times.sh)}:${fmt2(times.sm)} – ${fmt2(times.eh)}:${fmt2(times.em)}`,"ok");
+      shifts.push({year,month,day:dayNum,...times});
+    }
+
+    await worker.terminate();
+
+    // build ICS
+    setProgress(96,'Luodaan kalenteritiedosto…');
+    log('Luodaan kalenteritiedosto…');
+    const summary = $('summaryIn').value.trim() || 'Työvuoro';
+    const icsStr = buildICS(shifts, summary);
+    const blob   = new Blob([icsStr],{type:'text/calendar'});
+    $('dlBtn').href     = URL.createObjectURL(blob);
+    $('dlBtn').download = `tyovuorot_${year}_${fmt2(month)}.ics`;
+
+    setProgress(100,'Valmis!');
+    log(`Valmis — löydettiin ${shifts.length} työvuoroa`, 'ok');
+
+    // render result
+    $('resCount').textContent = shifts.length;
+    $('resSub').textContent   = `työvuoroa · ${MONTHS[month-1]} ${year}`;
+
+    const container = $('shiftRows');
+    container.innerHTML = '';
+    const sorted=[...shifts].sort((a,b)=>a.day-b.day);
+    const lens=sorted.map(s=>(s.eh*60+s.em)-(s.sh*60+s.sm));
+    const maxLen=Math.max(...lens,1);
+
+    sorted.forEach((s,i)=>{
+      const len=(s.eh*60+s.em)-(s.sh*60+s.sm);
+      const barW=Math.round(len/maxLen*100);
+      const el=document.createElement('div');
+      el.className='sg-row';
+      el.style.animationDelay=(i*.04)+'s';
+      // pill mimics the calendar app's shift block style
+      el.innerHTML=
+        `<div class="sg-cell-pill">
+           <span class="pill-date">${fmt2(s.day)}.${fmt2(month)}.</span>
+           <span>${fmt2(s.sh)}:${fmt2(s.sm)}</span>
+         </div>`+
+        `<span class="sg-times">${fmt2(s.sh)}:${fmt2(s.sm)} – ${fmt2(s.eh)}:${fmt2(s.em)}</span>`+
+        `<span class="sg-dur">${durStr(s.sh,s.sm,s.eh,s.em)}</span>`+
+        `<span class="sg-bar"><span class="sg-bar-bg"><span class="sg-bar-fill" style="width:${barW}%"></span></span></span>`;
+      container.appendChild(el);
+    });
+
+    $('result').classList.add('show');
+    $('result').scrollIntoView({behavior:'smooth',block:'start'});
+
+  } catch(err) {
+    log(`Virhe: ${err.message}`,'err');
+    setProgress(0,'Epäonnistui');
+  } finally {
+    $('runBtn').disabled = false;
+    $('runLabel').textContent = 'Lue työvuorot kuvasta';
+  }
+});
+</script>
+</body>
+</html>
